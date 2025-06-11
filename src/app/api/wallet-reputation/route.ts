@@ -1,48 +1,76 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from 'next/server';
-// Use the correct chain for your contract, which is Base Sepolia
 import { baseSepolia } from 'viem/chains';
+import { createPublicClient, http, isAddress, encodeFunctionData, Abi, TransactionSerializable } from 'viem';
 import { createMetadata, Metadata, ValidatedMetadata, ExecutionResponse } from '@sherrylinks/sdk';
 import { serialize } from 'wagmi';
-import { encodeFunctionData, isAddress, TransactionSerializable } from 'viem';
-// Import your contract's ABI
+// Assuming the ABI file is in the correct path for your project structure
 import { abi } from '../../blockchain/abi';
 
-// Your deployed PermanentLike contract address on Base Sepolia
+// --- Configuration ---
 const CONTRACT_ADDRESS = '0xeBCeE50B5Cd15907Cd77D89bCE87823D4d30250F';
+const contractChain = baseSepolia;
+
+// Create a public client to read from the blockchain
+const publicClient = createPublicClient({
+  chain: contractChain,
+  transport: http(),
+});
 
 /**
- * Handles GET requests to provide metadata for the SherryLink.
- * This defines the UI and functionality that will be presented to the user.
+ * Handles GET requests.
+ * - If 'address' query param is provided, fetches the reputation count.
+ * - Otherwise, provides metadata for the SherryLink.
  */
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const addressToQuery = searchParams.get('address');
+
+// --- A) Fetch Reputation Count ---
+if (addressToQuery) {
+  if (!isAddress(addressToQuery)) {
+    return NextResponse.json({ error: 'Invalid Ethereum address provided.' }, { status: 400 });
+  }
+  try {
+    const reputationScore = await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: abi as Abi,
+      functionName: 'likeCounts',
+      args: [addressToQuery],
+    }) as bigint; // Cast the result to the expected type (bigint for uint256)
+    return NextResponse.json({ address: addressToQuery, reputation: reputationScore.toString() });
+  } catch (error) {
+    console.error('Error fetching reputation count:', error);
+    return NextResponse.json({ error: 'Failed to fetch reputation count from the blockchain.' }, { status: 500 });
+  }
+}
+
+  // --- B) Provide SherryLink Metadata ---
   try {
     const host = req.headers.get('host') || 'localhost:3000';
     const protocol = req.headers.get('x-forwarded-proto') || 'http';
     const serverUrl = `${protocol}://${host}`;
 
-    // --- Metadata for the PermanentLike contract ---
     const metadata: Metadata = {
-      url: 'https://your-app-url.com', // Replace with your application's URL
-      icon: 'https://avatars.githubusercontent.com/u/117962315', // Replace with your app's icon
-      title: 'Permanent Like',
+      url: 'https://mini-app-sherry-wallet-reputation.vercel.app/',
+      icon: 'https://mini-app-sherry-wallet-reputation.vercel.app/icon-reputation.jpeg',
+      title: 'Permanent Reputation',
       baseUrl: serverUrl,
-      description: 'Give a permanent, on-chain "like" to an Ethereum content creator.',
+      description: 'Give a permanent, on-chain reputation point to an Ethereum content creator.',
       actions: [
         {
           type: 'dynamic',
-          label: 'Like Creator',
-          description: 'Enter the address of the creator you want to like.',
-          // The chain where the contract is deployed
+          label: 'Give Reputation',
+          description: 'Enter the address of the creator you want to give reputation to.',
           chains: { source: 'sepolia' },
-          // The API path that will handle the transaction creation
-          path: `/api/permanent-like`,
+          path: `/api/reputation`, // Match the new file name if changed
           params: [
             {
               name: 'contentCreator',
               label: 'Creator\'s Address',
-              type: 'text', // Address is a string
+              type: 'text',
               required: true,
-              description: 'Enter the Ethereum address of the content creator to like.',
+              description: 'Enter the Ethereum address of the content creator.',
             },
           ],
         },
@@ -50,14 +78,7 @@ export async function GET(req: NextRequest) {
     };
 
     const validated: ValidatedMetadata = createMetadata(metadata);
-
-    return NextResponse.json(validated, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      },
-    });
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return NextResponse.json(validated, { headers: { 'Access-Control-Allow-Origin': '*' }});
   } catch (error) {
     return NextResponse.json({ error: 'Failed to create metadata' }, { status: 500 });
   }
@@ -68,55 +89,49 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
+    const connectedAccount = body.account; // Account address from the SherryLink request body
     const { searchParams } = new URL(req.url);
     const contentCreator = searchParams.get('contentCreator');
 
     // --- Validation ---
+    if (!connectedAccount) {
+         return NextResponse.json({ error: 'Connected account address is required.' }, { status: 400 });
+    }
     if (!contentCreator) {
-      return NextResponse.json(
-        { error: 'The contentCreator address parameter is required' },
-        { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } },
-      );
+      return NextResponse.json({ error: 'The contentCreator address parameter is required.' }, { status: 400 });
     }
-    if (!isAddress(contentCreator)) {
-        return NextResponse.json(
-          { error: 'Invalid Ethereum address provided for contentCreator' },
-          { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } },
-        );
+    if (!isAddress(contentCreator) || !isAddress(connectedAccount)) {
+      return NextResponse.json({ error: 'Invalid Ethereum address provided.' }, { status: 400 });
     }
-
+    if (contentCreator.toLowerCase() === connectedAccount.toLowerCase()) {
+      return NextResponse.json({ error: 'You cannot give reputation to yourself.' }, { status: 400 });
+    }
 
     // --- Smart contract interaction ---
-    // Encode the function call data for the 'like' function
     const data = encodeFunctionData({
       abi: abi,
-      functionName: 'like',
-      args: [contentCreator], // The argument for the 'like' function is the creator's address
+      functionName: 'like', // The contract function is still named 'like'
+      args: [contentCreator],
     });
 
-    // --- Create the transaction object ---
     const tx: TransactionSerializable = {
       to: CONTRACT_ADDRESS,
       data: data,
-      chainId: baseSepolia.id, // Use the ID for the Base Sepolia chain
+      chainId: contractChain.id,
       type: 'legacy',
     };
 
     const serialized = serialize(tx);
 
-    // --- Prepare the response for the SherryLink SDK ---
     const resp: ExecutionResponse = {
       serializedTransaction: serialized,
-      chainId: baseSepolia.name, // Use the name of the Base Sepolia chain
+      chainId: contractChain.name,
     };
 
     return NextResponse.json(resp, {
       status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
+      headers: { 'Access-Control-Allow-Origin': '*' },
     });
   } catch (error) {
     console.error('Error in POST request:', error);
@@ -127,15 +142,13 @@ export async function POST(req: NextRequest) {
 /**
  * Handles OPTIONS requests for CORS preflight.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers':
-        'Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Date, X-Api-Version',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
 }
