@@ -122,7 +122,7 @@ function LikeInterface() {
     return (
       <div className='p-6 mt-8 bg-gray-800 border border-gray-700 rounded-lg'>
         <h2 className='mb-4 text-2xl font-bold text-white'>
-          Check or Give a Like
+          Check or Give a Reputation
         </h2>
 
         {/* Input Section */}
@@ -131,7 +131,7 @@ function LikeInterface() {
             htmlFor='creator-address'
             className='block mb-2 text-sm font-medium text-gray-300'
           >
-            Creator&apos;s Wallet Address
+            Wallet Address
           </label>
           <div className='flex flex-col sm:flex-row gap-2'>
             <input
@@ -145,19 +145,19 @@ function LikeInterface() {
               onClick={handleCheckLikes}
               className='px-4 py-2 font-bold text-white bg-gray-600 rounded-lg hover:bg-gray-700'
             >
-              Check Likes
+              Check Reputation
             </button>
           </div>
         </div>
 
         {/* Result Display Section */}
         {isReadLoading && (
-          <p className='mt-4 text-gray-400'>Fetching likes...</p>
+          <p className='mt-4 text-gray-400'>Fetching Reputation...</p>
         )}
 
         {likeCount !== undefined && isAddress(addressToQuery) && (
           <div className='mt-6 text-center bg-gray-900 p-6 rounded-lg'>
-            <p className='text-gray-400 text-lg'>Likes Received:</p>
+            <p className='text-gray-400 text-lg'>Reputation Received:</p>
             <p className='text-4xl font-bold text-white my-2'>
               {likeCount?.toString()}
             </p>
@@ -171,8 +171,8 @@ function LikeInterface() {
                 {isLikePending
                   ? "Confirming..."
                   : isConfirming
-                  ? "Liking..."
-                  : "Give a Like"}
+                  ? "Giving Reputation..."
+                  : "Give a Reputation"}
               </button>
             )}
           </div>
@@ -181,7 +181,7 @@ function LikeInterface() {
         {/* Status Messages */}
         {isConfirmed && (
           <p className='mt-2 text-sm text-green-400'>
-            Like successful! Transaction Hash:{" "}
+            Reputation given successfully! Transaction Hash:{" "}
             <a
               href={`${contractChain.blockExplorers.default.url}/tx/${hash}`}
               target='_blank'
@@ -212,7 +212,7 @@ export default function HomePage() {
     <main className='min-h-screen p-4 text-white bg-gray-900 sm:p-8'>
       <div className='max-w-2xl mx-auto'>
         <header className='flex items-center justify-between mb-8'>
-          <h1 className='text-4xl font-bold'>PermanentLike</h1>
+          <h1 className='text-4xl font-bold'>Wallet Reputation</h1>
           <ConnectWallet />
         </header>
 
