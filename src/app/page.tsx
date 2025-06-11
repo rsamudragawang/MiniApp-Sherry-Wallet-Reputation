@@ -1,103 +1,236 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect } from "react";
+import {
+  useAccount,
+  useConnect,
+  useDisconnect,
+  useWriteContract,
+  useReadContract,
+  useWaitForTransactionReceipt,
+} from "wagmi";
+import { isAddress, Abi } from "viem";
+import { baseSepolia } from "wagmi/chains";
+// Make sure this path correctly points to your ABI file
+import { abi } from "../app/blockchain/abi";
+
+// --- Contract Configuration ---
+// Your deployed PermanentLike contract address on Base Sepolia
+const contractAddress = "0xeBCeE50B5Cd15907Cd77D89bCE87823D4d30250F";
+const contractChain = baseSepolia;
+
+// --- Reusable UI Components ---
+
+function ConnectWallet() {
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+
+  // Find the injected connector (e.g., MetaMask)
+  const injectedConnector = connectors.find((c) => c.id === "injected");
+
+  if (isConnected) {
+    return (
+      <div className='text-right'>
+        <p className='text-sm text-gray-400'>
+          Connected: {`${address?.slice(0, 6)}...${address?.slice(-4)}`}
+        </p>
+        <button
+          onClick={() => disconnect()}
+          className='px-4 py-2 mt-2 text-sm font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500'
+        >
+          Disconnect
+        </button>
+      </div>
+    );
+  }
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <button
+      onClick={() =>
+        connect({ connector: injectedConnector, chainId: contractChain.id })
+      }
+      className='px-4 py-2 font-bold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+    >
+      Connect Wallet
+    </button>
+  );
+}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+function LikeInterface() {
+  const { address: connectedAddress } = useAccount();
+  const [creatorAddress, setCreatorAddress] = useState("");
+  const [addressToQuery, setAddressToQuery] = useState("");
+
+  // --- Wagmi Hooks ---
+
+  // 1. Hook for writing to the 'like' function
+  const {
+    data: hash,
+    error: writeError,
+    isPending: isLikePending,
+    writeContract,
+  } = useWriteContract();
+
+  // 2. Hook for reading the 'likeCounts'
+  const {
+    data: likeCount,
+    error: readError,
+    isLoading: isReadLoading,
+    refetch,
+  } = useReadContract({
+    address: contractAddress,
+    abi: abi as Abi,
+    functionName: "likeCounts",
+    args: [addressToQuery],
+    // Only enable the query when we have a valid address
+    query: {
+      enabled: isAddress(addressToQuery),
+    },
+  });
+
+  // 3. Hook to wait for the 'like' transaction to be confirmed
+  const { isLoading: isConfirming, isSuccess: isConfirmed } =
+    useWaitForTransactionReceipt({ hash });
+
+  // --- Effects ---
+
+  // When a 'like' transaction is confirmed, refetch the like count to show the new value
+  useEffect(() => {
+    if (isConfirmed) {
+      refetch();
+    }
+  }, [isConfirmed, refetch]);
+
+  // --- Event Handlers ---
+
+  const handleCheckLikes = () => {
+    if (isAddress(creatorAddress)) {
+      setAddressToQuery(creatorAddress);
+    } else {
+      alert("Please enter a valid Ethereum address.");
+    }
+  };
+
+  const handleLike = () => {
+    writeContract({
+      address: contractAddress,
+      abi: abi as Abi,
+      functionName: "like",
+      args: [creatorAddress],
+    });
+  };
+
+  // --- Derived State ---
+  const showLikeButton =
+    isAddress(addressToQuery) &&
+    connectedAddress &&
+    addressToQuery.toLowerCase() !== connectedAddress.toLowerCase();
+
+  return (
+    <div className='p-6 mt-8 bg-gray-800 border border-gray-700 rounded-lg'>
+      <h2 className='mb-4 text-2xl font-bold text-white'>
+        Check or Give a Like
+      </h2>
+
+      {/* Input Section */}
+      <div className='mb-4'>
+        <label
+          htmlFor='creator-address'
+          className='block mb-2 text-sm font-medium text-gray-300'
+        >
+          Creator's Wallet Address
+        </label>
+        <div className='flex flex-col sm:flex-row gap-2'>
+          <input
+            id='creator-address'
+            value={creatorAddress}
+            onChange={(e) => setCreatorAddress(e.target.value)}
+            placeholder='0x...'
+            className='flex-grow px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500'
+          />
+          <button
+            onClick={handleCheckLikes}
+            className='px-4 py-2 font-bold text-white bg-gray-600 rounded-lg hover:bg-gray-700'
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            Check Likes
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      {/* Result Display Section */}
+      {isReadLoading && <p className='mt-4 text-gray-400'>Fetching likes...</p>}
+
+      {likeCount !== undefined && isAddress(addressToQuery) && (
+        <div className='mt-6 text-center bg-gray-900 p-6 rounded-lg'>
+          <p className='text-gray-400 text-lg'>Likes Received:</p>
+          <p className='text-4xl font-bold text-white my-2'>
+            {likeCount.toString()}
+          </p>
+
+          {showLikeButton && (
+            <button
+              onClick={handleLike}
+              disabled={isLikePending || isConfirming}
+              className='mt-4 w-full sm:w-auto px-6 py-2 font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed'
+            >
+              {isLikePending
+                ? "Confirming..."
+                : isConfirming
+                ? "Liking..."
+                : "Give a Like"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Status Messages */}
+      {isConfirmed && (
+        <p className='mt-2 text-sm text-green-400'>
+          Like successful! Transaction Hash:{" "}
+          <a
+            href={`${contractChain.blockExplorers.default.url}/tx/${hash}`}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='underline'
+          >
+            {hash?.slice(0, 10)}...
+          </a>
+        </p>
+      )}
+
+      {(writeError || readError) && (
+        <p className='mt-2 text-sm text-red-400'>
+          Error:{" "}
+          {(writeError || readError)?.shortMessage ||
+            (writeError || readError)?.message}
+        </p>
+      )}
     </div>
+  );
+}
+
+// --- Main Page Component ---
+
+export default function HomePage() {
+  const { isConnected, chain } = useAccount();
+
+  return (
+    <main className='min-h-screen p-4 text-white bg-gray-900 sm:p-8'>
+      <div className='max-w-2xl mx-auto'>
+        <header className='flex items-center justify-between mb-8'>
+          <h1 className='text-4xl font-bold'>PermanentLike</h1>
+          <ConnectWallet />
+        </header>
+
+        {isConnected && chain?.id !== contractChain.id && (
+          <div className='p-4 mb-4 text-yellow-200 bg-yellow-800 rounded-md'>
+            <strong>Warning:</strong> Please switch your wallet to the{" "}
+            {contractChain.name} network to interact with the contract.
+          </div>
+        )}
+
+        {isConnected && chain?.id === contractChain.id && <LikeInterface />}
+      </div>
+    </main>
   );
 }
