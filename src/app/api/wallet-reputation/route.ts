@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from 'next/server';
-import { baseSepolia } from 'viem/chains';
+import { baseSepolia, sepolia } from 'viem/chains';
 import { createPublicClient, http, isAddress, encodeFunctionData, Abi, TransactionSerializable,serializeTransaction } from 'viem';
 import { createMetadata, Metadata, ValidatedMetadata, ExecutionResponse } from '@sherrylinks/sdk';
 import { serialize } from 'wagmi';
@@ -8,8 +8,8 @@ import { serialize } from 'wagmi';
 import { abi } from '../../blockchain/abi';
 
 // --- Configuration ---
-const CONTRACT_ADDRESS = '0xeBCeE50B5Cd15907Cd77D89bCE87823D4d30250F';
-const contractChain = baseSepolia;
+const CONTRACT_ADDRESS = '0x049025471619bB813F6921f3881A5BD610fCf17b';
+const contractChain = sepolia;
 
 // Create a public client to read from the blockchain
 const publicClient = createPublicClient({
