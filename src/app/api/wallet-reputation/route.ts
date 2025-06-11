@@ -63,7 +63,7 @@ if (addressToQuery) {
           label: 'Give Reputation',
           description: 'Enter the address of the creator you want to give reputation to.',
           chains: { source: 'sepolia' },
-          path: `/api/reputation`, // Match the new file name if changed
+          path: `/api/wallet-reputation`, // Match the new file name if changed
           params: [
             {
               name: 'contentCreator',
